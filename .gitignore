@@ -148,5 +148,4 @@ test_websocket.js
 dossier
 extracted_text
 ocr_results
-*.txt
 evals
