@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: accent-detector
-    env: docker
-    buildCommand: docker build -t accent-detector .
-    startCommand: docker run -p 8000:8000 accent-detector
-    envVars:
-      - key: OPENAI_API_KEY
-        sync: false
