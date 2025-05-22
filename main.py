@@ -6,7 +6,6 @@ import os
 import uuid
 import requests
 from moviepy.editor import VideoFileClip
-import whisper
 from openai import OpenAI
 import json
 from pydantic import BaseModel
@@ -25,9 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load Whisper model for transcription
-whisper_model = whisper.load_model("base")
-
+# Remove Whisper model loading
 # Configure OpenAI with the new client format
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -96,10 +93,14 @@ async def detect_accent_url(video_data: VideoURL):
         except Exception as e:
             return JSONResponse(status_code=500, content={"error": f"Failed to download video: {str(e)}"})
 
-    # Transcribe audio using Whisper
+    # Transcribe audio using OpenAI API instead of local Whisper model
     try:
-        result = whisper_model.transcribe(audio_filename)
-        transcription = result["text"]
+        with open(audio_filename, "rb") as audio_file:
+            transcription_response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        transcription = transcription_response.text
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
 
@@ -108,7 +109,7 @@ async def detect_accent_url(video_data: VideoURL):
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are an expert in linguistics and accent detection. Analyze the following transcription and determine the English accent (American, British, Australian, Indian, etc.). Provide your answer as a JSON with fields 'accent', 'confidence' (0-1), and 'summary' (a brief explanation of why you identified this accent, including key linguistic features)."},
+                {"role": "system", "content": "You are an expert in linguistics and accent detection. Analyze the following transcription and determine the English accent (American, British, Australian, Indian, etc.). If the transcription is too short or lacks distinctive features, make your best guess based on available cues and note the limitations in your summary. Provide your answer as a JSON with fields 'accent', 'confidence' (0-1), and 'summary' (a brief explanation of why you identified this accent, including key linguistic features)."},
                 {"role": "user", "content": f"Transcription: {transcription}"}
             ]
         )
@@ -141,10 +142,26 @@ async def detect_accent(video: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Audio extraction failed: {str(e)}"})
 
-    # Transcribe audio using Whisper
+    # Transcribe audio using OpenAI API instead of local Whisper model
     try:
-        result = whisper_model.transcribe(audio_filename)
-        transcription = result["text"]
+        with open(audio_filename, "rb") as audio_file:
+            transcription_response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        transcription = transcription_response.text
+        print(f"DEBUG - Transcription: {transcription}")  # Add debug logging
+        
+        # Check if transcription is too short
+        if not transcription or len(transcription.split()) < 5:
+            return JSONResponse(
+                status_code=400, 
+                content={
+                    "accent": "Insufficient data",
+                    "confidence": 0,
+                    "summary": "The audio sample contains insufficient speech for accurate accent detection. Please provide a longer sample with more speech content."
+                }
+            )
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": f"Transcription failed: {str(e)}"})
 
@@ -153,7 +170,7 @@ async def detect_accent(video: UploadFile = File(...)):
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are an expert in linguistics and accent detection. Analyze the following transcription and determine the English accent (American, British, Australian, Indian, etc.). Provide your answer as a JSON with fields 'accent', 'confidence' (0-1), and 'summary' (a brief explanation of why you identified this accent, including key linguistic features)."},
+                {"role": "system", "content": "You are an expert in linguistics and accent detection. Your task is to analyze the transcription and identify the English accent (American, British, Australian, Indian, etc.). Even with limited data, provide your best assessment. If you truly cannot determine the accent, suggest the most likely possibilities based on any subtle cues. ALWAYS respond with a valid JSON containing 'accent' (the identified accent or 'American' if uncertain), 'confidence' (0.1-1.0, use at least 0.1 even when uncertain), and 'summary' (your explanation)."},
                 {"role": "user", "content": f"Transcription: {transcription}"}
             ]
         )
