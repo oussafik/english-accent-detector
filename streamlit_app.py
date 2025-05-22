@@ -78,8 +78,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+if os.getenv("OPENAI_API_KEY"):
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+elif 'OPENAI_API_KEY' in st.secrets:
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
+else:
+    openai_api_key = st.text_input("Enter your OpenAI API key", type="password")
+    if not openai_api_key:
+        st.warning("Please enter your OpenAI API key to continue")
+        st.stop()
 
+client = OpenAI(api_key=openai_api_key)
 # Load Whisper model for transcription
 @st.cache_resource
 def load_whisper_model():
