@@ -149,3 +149,4 @@ dossier
 extracted_text
 ocr_results
 evals
+secrets.toml
